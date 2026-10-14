@@ -1,0 +1,9 @@
+method:
+  name: dora         # LoRA on the direction + trainable magnitude vector
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
+  load_in_4bit: false  # true = QDoRA
+train:
+  lr: 1.0e-4         # DoRA is usually run a bit lower than LoRA

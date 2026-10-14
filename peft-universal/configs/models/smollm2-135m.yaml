@@ -1,0 +1,9 @@
+# Laptop-sized example. Same pipeline as the big models.
+run_name: smollm2-135m-demo
+model:
+  name_or_path: HuggingFaceTB/SmolLM2-135M-Instruct
+  max_seq_length: 1024
+train:
+  output_dir: outputs/smollm2-135m-demo
+  per_device_batch_size: 8
+  grad_accum: 2

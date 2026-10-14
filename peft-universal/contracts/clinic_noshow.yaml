@@ -1,0 +1,16 @@
+# Data contract: the rules synthetic clinic-appointment rows must obey, written BEFORE generating anything.
+name: clinic_noshow_synthetic
+version: "1.0"
+fields:
+  - {name: age_band, dtype: category, categories: ["18-29", "30-44", "45-64", "65+"]}
+  - {name: visit_type, dtype: category, categories: [new_patient, follow_up, procedure, telehealth]}
+  - {name: lead_time_days, dtype: float, min: 0, max: 120}
+  - {name: prior_no_shows, dtype: int, min: 0, max: 20}
+  - {name: sms_reminder, dtype: category, categories: ["yes", "no"]}
+  - {name: distance_km, dtype: float, min: 0.5, max: 150}
+  - {name: no_show, dtype: bool}
+constraints:
+  - "lead_time_days >= 0"
+  - "visit_type != 'telehealth' or distance_km >= 0"
+privacy: {pii_allowed: false, max_exact_match_rate: 0.0, min_dcr_ratio: 0.9}
+quality: {max_psi: 0.2, min_utility_ratio: 0.9, max_duplicate_rate: 0.02}

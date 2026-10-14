@@ -1,0 +1,9 @@
+# Template for 30B+ models: use qlora.yaml on one 80 GB GPU, or LoRA with FSDP on several.
+run_name: qwen-large
+model:
+  name_or_path: Qwen/Qwen2.5-32B-Instruct
+  max_seq_length: 4096
+train:
+  output_dir: outputs/qwen-large
+  per_device_batch_size: 1
+  grad_accum: 16

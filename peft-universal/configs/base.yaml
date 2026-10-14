@@ -1,0 +1,37 @@
+# Shared defaults. Layer a method file and a model file on top of this.
+run_name: peft-run
+model:
+  name_or_path: HuggingFaceTB/SmolLM2-135M-Instruct
+  revision: main
+  dtype: bfloat16            # bfloat16 on Ampere+ (A100/L40/H100/4090); float16 on T4/V100
+  trust_remote_code: false
+  attn_implementation: sdpa  # flash_attention_2 only if flash-attn is installed
+  max_seq_length: 2048
+data:
+  train_file: data/processed/train.jsonl
+  eval_file: data/processed/eval.jsonl
+  packing: false
+  assistant_only_loss: false # true only if the chat template has {% generation %} markers
+train:
+  output_dir: outputs/peft-run
+  epochs: 1
+  max_steps: -1
+  per_device_batch_size: 4
+  grad_accum: 4              # effective batch = 4 x 4 x num_gpus
+  lr: 2.0e-4
+  scheduler: cosine
+  warmup_steps: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  optim: adamw_torch
+  gradient_checkpointing: true
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 200
+  save_total_limit: 3
+  report_to: none            # tensorboard | wandb | mlflow | none
+  seed: 42
+hub:
+  push: false
+  repo_id: null
+  private: true

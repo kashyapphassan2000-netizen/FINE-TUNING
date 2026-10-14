@@ -1,0 +1,6 @@
+# Data parallel: every GPU holds a FULL model copy. Faster, not smaller. Works with QLoRA (one 4-bit copy per GPU).
+compute_environment: LOCAL_MACHINE
+distributed_type: MULTI_GPU
+mixed_precision: bf16
+num_machines: 1
+num_processes: 4        # = number of GPUs on the VM

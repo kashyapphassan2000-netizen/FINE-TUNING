@@ -1,0 +1,6 @@
+method:
+  name: lora
+  r: 16
+  alpha: 32          # scale = alpha / r = 2
+  dropout: 0.05
+  target_modules: all-linear

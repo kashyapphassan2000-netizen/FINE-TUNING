@@ -1,0 +1,31 @@
+# 81. Mixture-of-Experts models
+
+Chapter 22 covers MoE sizing in depth. This chapter is the adaptation view.
+
+## 81.1 Inspect
+
+```py
+for n, m in model.named_modules():
+    if "expert" in n or "router" in n or "gate" in n.split(".")[-1]:
+        print(n, type(m).__name__, [tuple(p.shape) for p in m.parameters(recurse=False)])
+cfg = model.config.to_dict()
+print({k: cfg.get(k) for k in ("num_experts", "num_local_experts", "n_routed_experts",
+                                "num_experts_per_tok", "n_shared_experts")})
+```
+
+- **total parameters** = everything, including every expert (memory).
+- **active parameters** = shared layers + (top-k / n_experts) × expert parameters (compute per token).
+
+## 81.2 What discovery found (lab 60, Qwen3-MoE)
+
+Only attention was wrapped (q/k/v/o): in transformers 5.17 the experts are **fused 3-D tensors**, not `nn.Linear`, so a Linear-wrapping approach cannot see them, and the router was excluded by rule. Trainable share 6.6%, merge exact.
+
+## 81.3 Decisions
+
+|Question|Answer|
+|---|---|
+|LoRA on all experts?|possible with PEFT's fused-expert support, but trainable parameters multiply by the expert count (chapter 22: 11.8B vs 61M on a Kimi-sized config)|
+|routers?|freeze: small changes re-route tokens and destabilise training|
+|QLoRA?|bitsandbytes does not quantize fused experts (chapter 22) — the memory saving may be small|
+|load balancing?|if you train experts, keep the auxiliary load-balancing loss the model defines, or experts collapse|
+|debugging|log expert utilisation per batch; a collapse to few experts shows up there before in the loss|

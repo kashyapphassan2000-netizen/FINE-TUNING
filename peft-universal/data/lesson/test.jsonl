@@ -1,0 +1,2 @@
+{"id": "t0", "messages": [{"role": "user", "content": "What is the pressure limit?"}], "expected": "The maximum pressure is 6 bar.", "must_include": ["6 bar"]}
+{"id": "t1", "messages": [{"role": "user", "content": "How is the controller reset?"}], "expected": "Hold the red button for five seconds.", "must_include": ["red button"]}

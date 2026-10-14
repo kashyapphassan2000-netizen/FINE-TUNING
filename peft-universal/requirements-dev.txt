@@ -1,0 +1,8 @@
+# Laptop / CI (CPU). Install torch CPU build first (see guide), then:
+-r requirements-train.txt
+pytest
+reportlab
+moto[s3]
+fastapi==0.141.1
+uvicorn
+jax[cpu]

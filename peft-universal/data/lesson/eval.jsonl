@@ -1,0 +1,2 @@
+{"messages": [{"role": "user", "content": "What is the pressure limit?"}, {"role": "assistant", "content": "The maximum pressure is 6 bar."}]}
+{"messages": [{"role": "user", "content": "How is the controller reset?"}, {"role": "assistant", "content": "Hold the red button for five seconds."}]}

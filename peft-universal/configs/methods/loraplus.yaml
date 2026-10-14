@@ -1,0 +1,9 @@
+method:
+  name: loraplus     # plain LoRA weights, but lr(B) = ratio * lr(A)
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
+  loraplus_lr_ratio: 16
+train:
+  lr: 1.0e-4         # this is the lr of A; B gets 16x

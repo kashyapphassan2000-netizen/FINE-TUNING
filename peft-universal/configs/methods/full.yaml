@@ -1,0 +1,7 @@
+method:
+  name: full         # every weight trained: 16 bytes/param with AdamW. Shard it (configs/accelerate/deepspeed_zero3.yaml)
+train:
+  lr: 1.0e-5         # full fine-tuning lr is ~10-20x LOWER than LoRA's 2e-4
+  optim: adamw_torch
+  weight_decay: 0.01
+  warmup_steps: 0.03

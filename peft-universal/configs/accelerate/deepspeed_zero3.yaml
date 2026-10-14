@@ -1,0 +1,10 @@
+# DeepSpeed ZeRO-3 through accelerate: parameters, gradients AND optimizer state sharded over all GPUs.
+# Keys parsed by accelerate 1.15.0's own config loader in this guide. NOT executed on GPUs here.
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+deepspeed_config:
+  deepspeed_config_file: configs/deepspeed/zero3.json
+  zero3_init_flag: true
+mixed_precision: bf16
+num_machines: 1
+num_processes: 8

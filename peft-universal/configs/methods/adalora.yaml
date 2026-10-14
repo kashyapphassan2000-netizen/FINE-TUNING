@@ -1,0 +1,14 @@
+method:
+  name: adalora      # SVD-form adapters whose ranks are pruned during training
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
+  adalora:
+    init_r: 12       # starting rank per layer
+    target_r: 8      # average rank after pruning
+    tinit_ratio: 0.10
+    tfinal_ratio: 0.20
+    deltaT: 10
+    beta1: 0.85
+    beta2: 0.85
+    orth_reg_weight: 0.5

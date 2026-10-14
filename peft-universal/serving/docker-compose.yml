@@ -1,0 +1,39 @@
+# One GPU VM: vLLM + gateway + Prometheus. Run from repo root: docker compose -f serving/docker-compose.yml up -d
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.29.0   # confirm the tag exists on Docker Hub; pin it, never use :latest in prod
+    command: >
+      --model ${MODEL}
+      --served-model-name ${SERVED_NAME:-model}
+      --max-model-len ${MAX_MODEL_LEN:-8192}
+      --gpu-memory-utilization ${GPU_UTIL:-0.90}
+      --api-key ${VLLM_API_KEY}
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      retries: 40
+    expose: ["8000"]
+  gateway:
+    build: ./gateway
+    environment:
+      - UPSTREAMS=http://vllm:8000
+      - UPSTREAM_API_KEY=${VLLM_API_KEY}
+      - GATEWAY_KEY_HASHES=${GATEWAY_KEY_HASHES}
+      - GATEWAY_ADMIN_KEY_HASH=${GATEWAY_ADMIN_KEY_HASH}
+      - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}
+    ports: ["8080:8080"]
+    depends_on:
+      vllm: {condition: service_healthy}
+  prometheus:
+    image: prom/prometheus:latest
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["127.0.0.1:9090:9090"]

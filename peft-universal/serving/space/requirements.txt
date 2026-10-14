@@ -1,0 +1,7 @@
+# Reference only: `python -m peftkit.space` writes the Space's requirements.txt for the chosen backend
+# (endpoint: openai only; local on CPU: CPU torch wheel + transformers + accelerate; local on GPU hardware: torch).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+transformers==5.17.0
+accelerate==1.15.0
+openai>=1.0

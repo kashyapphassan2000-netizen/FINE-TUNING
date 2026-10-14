@@ -1,0 +1,30 @@
+# One base model, many plug-and-play adapters. All adapters MUST be trained on this exact base + revision.
+base:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  revision: null            # pin a commit sha in production
+adapters:
+  - name: finance
+    source: your-user/llama31-8b-finance-lora
+    domain: finance
+    method: lora
+    rank: 16
+    keywords: [invoice, balance sheet, ebitda, revenue, tax]
+    eval: {suite: finance-v1, score: null}
+  - name: legal
+    source: your-user/llama31-8b-legal-lora
+    domain: legal
+    method: qlora
+    rank: 32
+    keywords: [contract, clause, liability, nda, indemnity]
+  - name: support
+    source: your-user/llama31-8b-support-lora
+    domain: customer support
+    method: loraplus
+    rank: 16
+    keywords: [refund, warranty, reset, order, shipping]
+  - name: finance-v2
+    source: your-user/llama31-8b-finance-lora-v2
+    domain: finance
+    method: lora
+    rank: 16
+    status: shadow          # loaded for evaluation only, not routed

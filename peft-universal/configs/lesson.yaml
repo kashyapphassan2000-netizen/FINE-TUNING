@@ -1,0 +1,20 @@
+# The Basics lab (Part 4 of the lab manual): a tiny offline model on your laptop CPU.
+run_name: lesson
+model:
+  name_or_path: outputs/tiny
+  max_seq_length: 128
+method:
+  r: 16
+data:
+  train_file: data/lesson/train.jsonl
+  eval_file: data/lesson/eval.jsonl
+  assistant_only_loss: true
+train:
+  output_dir: outputs/lesson
+  epochs: 20
+  per_device_batch_size: 8
+  grad_accum: 1
+  lr: 5.0e-3
+  logging_steps: 20
+  eval_steps: 60
+  save_steps: 10000

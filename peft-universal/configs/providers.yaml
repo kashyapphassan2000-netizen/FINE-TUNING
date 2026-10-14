@@ -1,0 +1,21 @@
+# GPU catalogue for peftkit.capacity. VRAM, GPUs per node and interconnect are hardware facts.
+# price_per_gpu_hour is DELIBERATELY EMPTY: prices differ by up to ~5x for the same GPU across providers
+# and change monthly (third-party comparisons in mid-2026 reported H100 from about $2 to $12 per GPU-hour).
+# Fill in the price YOUR account is quoted, then the calculator does the rest.
+- {provider: Hyperstack, gpu: L40, vram_gb: 48, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: Hyperstack, gpu: H100-PCIe, vram_gb: 80, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: Hyperstack, gpu: H100-SXM, vram_gb: 80, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: RunPod, gpu: RTX-4090, vram_gb: 24, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: RunPod, gpu: L40S, vram_gb: 48, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: RunPod, gpu: H100-SXM, vram_gb: 80, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: RunPod, gpu: H200-SXM, vram_gb: 141, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: RunPod, gpu: B200, vram_gb: 180, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: Lambda, gpu: A100-80GB, vram_gb: 80, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: Lambda, gpu: H100-SXM, vram_gb: 80, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: Vast.ai, gpu: RTX-4090, vram_gb: 24, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: CoreWeave, gpu: H100-SXM, vram_gb: 80, gpus_per_node: 8, interconnect: NVLink+InfiniBand, price_per_gpu_hour: null}
+- {provider: AWS, gpu: L4 (g6), vram_gb: 24, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: AWS, gpu: H100 (p5), vram_gb: 80, gpus_per_node: 8, interconnect: NVLink+EFA, price_per_gpu_hour: null}
+- {provider: GCP, gpu: L4 (g2), vram_gb: 24, gpus_per_node: 8, interconnect: PCIe, price_per_gpu_hour: null}
+- {provider: GCP, gpu: H100 (a3), vram_gb: 80, gpus_per_node: 8, interconnect: NVLink, price_per_gpu_hour: null}
+- {provider: Azure, gpu: H100 (ND v5), vram_gb: 80, gpus_per_node: 8, interconnect: NVLink+InfiniBand, price_per_gpu_hour: null}

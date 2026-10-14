@@ -1,0 +1,23 @@
+# Checked on PyPI 2026-09-17. Linux GPU VM, Python 3.11.
+torch==2.14.0
+transformers==5.17.0
+peft==0.21.0
+trl==1.13.0
+accelerate==1.15.0
+datasets==5.0.1
+bitsandbytes==0.50.2
+safetensors==0.8.0
+huggingface_hub==1.31.0
+tokenizers==0.23.2
+pydantic==2.13.5
+pyyaml==6.0.3
+httpx
+python-dotenv
+pypdf
+python-docx
+openpyxl
+scikit-learn
+numpy
+python-pptx
+boto3
+tensorboard

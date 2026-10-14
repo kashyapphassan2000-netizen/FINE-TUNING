@@ -1,0 +1,44 @@
+# Kubernetes (Hyperstack on-demand K8s, EKS, GKE...). Needs the NVIDIA device plugin on GPU nodes.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: vllm, labels: {app: vllm}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: vllm}}
+  template:
+    metadata:
+      labels: {app: vllm}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000"}
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.29.0
+          args: ["--model", "$(MODEL)", "--max-model-len", "8192", "--gpu-memory-utilization", "0.90",
+                 "--api-key", "$(VLLM_API_KEY)"]
+          env:
+            - {name: MODEL, value: "your-user/your-merged-model"}
+            - name: VLLM_API_KEY
+              valueFrom: {secretKeyRef: {name: llm-secrets, key: vllm-api-key}}
+            - name: HF_TOKEN
+              valueFrom: {secretKeyRef: {name: llm-secrets, key: hf-token}}
+          ports: [{containerPort: 8000}]
+          resources:
+            limits: {nvidia.com/gpu: 1}
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 600
+            periodSeconds: 30
+          volumeMounts: [{name: shm, mountPath: /dev/shm}]
+      volumes:
+        - {name: shm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: vllm}
+spec:
+  selector: {app: vllm}
+  ports: [{port: 8000, targetPort: 8000}]

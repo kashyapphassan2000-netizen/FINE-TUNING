@@ -1,0 +1,16 @@
+# Autoscale vLLM replicas on queue depth. Requires KEDA + Prometheus in the cluster, and a cluster
+# autoscaler (or provider node pools) so new GPU nodes appear when pods are Pending.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: {name: vllm-scaler}
+spec:
+  scaleTargetRef: {name: vllm}
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  cooldownPeriod: 900
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-server.monitoring.svc:80
+        query: sum(vllm:num_requests_waiting{app="vllm"})
+        threshold: "8"

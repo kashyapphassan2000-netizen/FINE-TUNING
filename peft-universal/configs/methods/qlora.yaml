@@ -1,0 +1,13 @@
+method:
+  name: qlora        # 4-bit NF4 base + LoRA adapters
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
+  quant:
+    quant_type: nf4
+    double_quant: true
+    compute_dtype: bfloat16
+train:
+  optim: paged_adamw_8bit
+  lr: 2.0e-4
