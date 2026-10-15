@@ -1,0 +1,114 @@
+{
+ "6.0-A": {
+  "code": "import math\nimport time\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nimport matplotlib.pyplot as plt\n\ntorch.manual_seed(42)\ndevice = \"cuda\" if torch.cuda.is_available() else \"cpu\"\nprint(\"torch\", torch.__version__, \"| device:\", device)",
+  "out": "torch 2.14.1+cpu | device: cpu\n",
+  "figs": [],
+  "seconds": 1.3
+ },
+ "6.0-B": {
+  "code": "class MultiHeadAttention(nn.Module):\n    def __init__(self, d_model, n_heads, dropout=0.0):\n        super().__init__()\n        assert d_model % n_heads == 0\n        self.n_heads = n_heads\n        self.d_head = d_model // n_heads\n        self.W_q = nn.Linear(d_model, d_model)\n        self.W_k = nn.Linear(d_model, d_model)\n        self.W_v = nn.Linear(d_model, d_model)\n        self.W_o = nn.Linear(d_model, d_model)\n        self.dropout = nn.Dropout(dropout)\n\n    def split_heads(self, x):\n        B, T, _ = x.shape\n        return x.view(B, T, self.n_heads, self.d_head).transpose(1, 2)\n\n    def forward(self, x_q, x_kv=None, mask=None):\n        if x_kv is None:\n            x_kv = x_q\n        Q = self.split_heads(self.W_q(x_q))\n        K = self.split_heads(self.W_k(x_kv))\n        V = self.split_heads(self.W_v(x_kv))\n        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.d_head)\n        if mask is not None:\n            scores = scores.masked_fill(mask == 0, float(\"-inf\"))\n        weights = self.dropout(torch.softmax(scores, dim=-1))\n        out = weights @ V\n        B, H, T, Dh = out.shape\n        out = out.transpose(1, 2).contiguous().view(B, T, H * Dh)\n        return self.W_o(out), weights\n\n\ndef causal_mask(T):\n    return torch.tril(torch.ones(T, T)).view(1, 1, T, T)\n\n\nclass FeedForward(nn.Module):\n    def __init__(self, d_model, dropout=0.0):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Linear(d_model, 4 * d_model),\n            nn.GELU(),\n            nn.Linear(4 * d_model, d_model),\n            nn.Dropout(dropout),\n        )\n\n    def forward(self, x):\n        return self.net(x)\n\n\nclass Block(nn.Module):\n    def __init__(self, d_model, n_heads, dropout=0.0):\n        super().__init__()\n        self.ln1 = nn.LayerNorm(d_model)\n        self.attn = MultiHeadAttention(d_model, n_heads, dropout)\n        self.ln2 = nn.LayerNorm(d_model)\n        self.ffn = FeedForward(d_model, dropout)\n\n    def forward(self, x, mask=None):\n        a, _ = self.attn(self.ln1(x), mask=mask)\n        x = x + a\n        x = x + self.ffn(self.ln2(x))\n        return x\n\nprint(\"building blocks ready\")",
+  "out": "building blocks ready\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "6.1-A": {
+  "code": "from transformers import AutoTokenizer, AutoModelForSeq2SeqLM\n\nt5_tok = AutoTokenizer.from_pretrained(\"google-t5/t5-small\")\nt5 = AutoModelForSeq2SeqLM.from_pretrained(\"google-t5/t5-small\").to(device)\n\ndef t5_run(prompt, max_new_tokens=40):\n    inputs = t5_tok(prompt, return_tensors=\"pt\").to(device)\n    out = t5.generate(**inputs, max_new_tokens=max_new_tokens)\n    return t5_tok.decode(out[0], skip_special_tokens=True)\n\nprint(t5_run(\"translate English to German: The house is wonderful.\"))\nprint(t5_run(\"summarize: The Transformer is a neural network that reads a whole sentence at \"\n             \"once and uses attention to decide which words matter for each other word. It \"\n             \"replaced recurrent networks in translation and now powers chatbots.\"))",
+  "out": "Das Haus ist wunderbar.\nthe Transformer is a neural network that reads a whole sentence at once. it replaced recurrent networks in translation and now powers chatbots.\n",
+  "figs": [],
+  "seconds": 9.2
+ },
+ "6.1-B": {
+  "code": "cfg = t5.config\nprint(\"encoder layers:\", cfg.num_layers, \"| decoder layers:\", cfg.num_decoder_layers,\n      \"| d_model:\", cfg.d_model, \"| heads:\", cfg.num_heads)\nprint(\"\\nInside ONE decoder layer:\")\nfor name, module in t5.decoder.block[0].named_children():\n    print(\" \", name)\n    for sub_name, sub in module.named_children():\n        print(\"     \", sub_name, \"->\", type(sub).__name__)\nprint(\"\\nTotal parameters:\", f\"{sum(p.numel() for p in t5.parameters()):,}\")",
+  "out": "encoder layers: 6 | decoder layers: 6 | d_model: 512 | heads: 8\n\nInside ONE decoder layer:\n  layer\n      0 -> T5LayerSelfAttention\n      1 -> T5LayerCrossAttention\n      2 -> T5LayerFF\n\nTotal parameters: 60,506,624\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "6.2-A": {
+  "code": "from transformers import pipeline\n\nfill = pipeline(\"fill-mask\", model=\"google-bert/bert-base-uncased\",\n                device=0 if device == \"cuda\" else -1)\nfor guess in fill(\"The [MASK] barked at the mailman all morning.\")[:5]:\n    print(f\"{guess['token_str']:>10}  {guess['score']:.3f}\")",
+  "out": "       dog  0.285\n       man  0.092\n      dogs  0.033\n     woman  0.027\n       boy  0.026\n",
+  "figs": [],
+  "seconds": 8.0
+ },
+ "6.2-B": {
+  "code": "from transformers import AutoModel\n\nbert_tok = AutoTokenizer.from_pretrained(\"google-bert/bert-base-uncased\")\nbert = AutoModel.from_pretrained(\"google-bert/bert-base-uncased\").to(device).eval()\n\ndef word_vector(sentence, word):\n    enc = bert_tok(sentence, return_tensors=\"pt\").to(device)\n    with torch.no_grad():\n        hidden = bert(**enc).last_hidden_state[0]\n    toks = bert_tok.convert_ids_to_tokens(enc[\"input_ids\"][0])\n    return hidden[toks.index(word)]\n\nriver1 = word_vector(\"We sat on the bank of the river and fished.\", \"bank\")\nriver2 = word_vector(\"The river bank was muddy after the rain.\", \"bank\")\nmoney = word_vector(\"I deposited my salary at the bank today.\", \"bank\")\nprint(\"river bank vs river bank:\", round(F.cosine_similarity(river1, river2, dim=0).item(), 3))\nprint(\"river bank vs money bank:\", round(F.cosine_similarity(river1, money, dim=0).item(), 3))",
+  "out": "river bank vs river bank: 0.66\nriver bank vs money bank: 0.484\n",
+  "figs": [],
+  "seconds": 0.6
+ },
+ "6.2-C": {
+  "code": "st_name = \"sentence-transformers/all-MiniLM-L6-v2\"\nst_tok = AutoTokenizer.from_pretrained(st_name)\nst_model = AutoModel.from_pretrained(st_name).to(device).eval()\n\ndef embed(sentences):\n    enc = st_tok(sentences, padding=True, truncation=True, return_tensors=\"pt\").to(device)\n    with torch.no_grad():\n        hidden = st_model(**enc).last_hidden_state\n    m = enc[\"attention_mask\"].unsqueeze(-1).float()\n    vecs = (hidden * m).sum(1) / m.sum(1)\n    return F.normalize(vecs, dim=-1)\n\ndocs = [\"How do I reset my password?\",\n        \"Our office is closed on public holidays.\",\n        \"Refunds are processed within 5 business days.\",\n        \"The GPU ran out of memory during training.\"]\nquery = \"I forgot my login credentials\"\nscores = embed([query]) @ embed(docs).T\nfor d, s in sorted(zip(docs, scores[0].tolist()), key=lambda p: -p[1]):\n    print(f\"{s:.3f}  {d}\")",
+  "out": "0.678  How do I reset my password?\n0.109  The GPU ran out of memory during training.\n0.085  Refunds are processed within 5 business days.\n0.072  Our office is closed on public holidays.\n",
+  "figs": [],
+  "seconds": 4.9
+ },
+ "6.3-A": {
+  "code": "import urllib.request\n\nurl = \"https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt\"\ntext = urllib.request.urlopen(url).read().decode(\"utf-8\")\nchars = sorted(set(text))\nvocab_size = len(chars)\nstoi = {c: i for i, c in enumerate(chars)}\nitos = {i: c for c, i in stoi.items()}\nencode = lambda s: [stoi[c] for c in s]\ndecode = lambda ids: \"\".join(itos[i] for i in ids)\ndata = torch.tensor(encode(text), dtype=torch.long)\nn = int(0.9 * len(data))\ntrain_data, val_data = data[:n], data[n:]\nprint(\"characters in file:\", f\"{len(text):,}\")\nprint(\"vocabulary size   :\", vocab_size)\nprint(\"train / val tokens:\", f\"{len(train_data):,}\", \"/\", f\"{len(val_data):,}\")\nprint(text[:120])",
+  "out": "characters in file: 1,115,394\nvocabulary size   : 65\ntrain / val tokens: 1,003,854 / 111,540\nFirst Citizen:\nBefore we proceed any further, hear me speak.\n\nAll:\nSpeak, speak.\n\nFirst Citizen:\nYou are all resolved ra\n",
+  "figs": [],
+  "seconds": 0.4
+ },
+ "6.3-B": {
+  "code": "BLOCK_SIZE = 128\nBATCH_SIZE = 64\n\ndef get_batch(split):\n    src = train_data if split == \"train\" else val_data\n    ix = torch.randint(len(src) - BLOCK_SIZE - 1, (BATCH_SIZE,))\n    x = torch.stack([src[i:i + BLOCK_SIZE] for i in ix])\n    y = torch.stack([src[i + 1:i + BLOCK_SIZE + 1] for i in ix])\n    return x.to(device), y.to(device)\n\nxb, yb = get_batch(\"train\")\nprint(\"x batch:\", tuple(xb.shape), \" y batch:\", tuple(yb.shape))\nprint(\"x:\", repr(decode(xb[0, :20].tolist())))\nprint(\"y:\", repr(decode(yb[0, :20].tolist())), \"<- same text shifted left by one\")",
+  "out": "x batch: (64, 128)  y batch: (64, 128)\nx: ' passage.\\n\\nSecond Wa'\ny: 'passage.\\n\\nSecond Wat' <- same text shifted left by one\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "6.3-C": {
+  "code": "class MiniGPT(nn.Module):\n    def __init__(self, vocab_size, block_size, d_model=256, n_heads=4, n_layers=4, dropout=0.1):\n        super().__init__()\n        self.block_size = block_size\n        self.tok_emb = nn.Embedding(vocab_size, d_model)\n        self.pos_emb = nn.Embedding(block_size, d_model)\n        self.drop = nn.Dropout(dropout)\n        self.blocks = nn.ModuleList([Block(d_model, n_heads, dropout) for _ in range(n_layers)])\n        self.ln_f = nn.LayerNorm(d_model)\n        self.head = nn.Linear(d_model, vocab_size, bias=False)\n        self.register_buffer(\"mask\", causal_mask(block_size))\n\n    def forward(self, idx, targets=None):\n        B, T = idx.shape\n        pos = torch.arange(T, device=idx.device)\n        x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))\n        mask = self.mask[:, :, :T, :T]\n        for block in self.blocks:\n            x = block(x, mask)\n        logits = self.head(self.ln_f(x))\n        loss = None\n        if targets is not None:\n            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))\n        return logits, loss\n\n    @torch.no_grad()\n    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):\n        for _ in range(max_new_tokens):\n            idx_cond = idx[:, -self.block_size:]\n            logits, _ = self(idx_cond)\n            logits = logits[:, -1, :] / temperature\n            if top_k is not None:\n                v, _ = torch.topk(logits, top_k)\n                logits[logits < v[:, [-1]]] = float(\"-inf\")\n            probs = F.softmax(logits, dim=-1)\n            next_id = torch.multinomial(probs, num_samples=1)\n            idx = torch.cat([idx, next_id], dim=1)\n        return idx\n\ntorch.manual_seed(42)\nmodel = MiniGPT(vocab_size, BLOCK_SIZE).to(device)\nprint(\"MiniGPT parameters:\", f\"{sum(p.numel() for p in model.parameters()):,}\")\n_, loss = model(xb, yb)\nprint(\"loss before training:\", round(loss.item(), 3), \"| random-guess loss = ln(65) =\", round(math.log(vocab_size), 3))",
+  "out": "MiniGPT parameters: 3,225,600\nloss before training: 4.31 | random-guess loss = ln(65) = 4.174\n",
+  "figs": [],
+  "seconds": 1.7
+ },
+ "6.3-D": {
+  "code": "MAX_ITERS = 3000\nEVAL_EVERY = 300\nEVAL_ITERS = 50\nLR = 1e-3\n\n@torch.no_grad()\ndef estimate_loss(m):\n    m.eval()\n    out = {}\n    for split in [\"train\", \"val\"]:\n        losses = torch.zeros(EVAL_ITERS)\n        for k in range(EVAL_ITERS):\n            x, y = get_batch(split)\n            _, l = m(x, y)\n            losses[k] = l.item()\n        out[split] = losses.mean().item()\n    m.train()\n    return out\n\noptimizer = torch.optim.AdamW(model.parameters(), lr=LR)\nhistory = []\nt0 = time.time()\nfor it in range(MAX_ITERS + 1):\n    if it % EVAL_EVERY == 0:\n        l = estimate_loss(model)\n        history.append((it, l[\"train\"], l[\"val\"]))\n        print(f\"step {it:5d} | train {l['train']:.3f} | val {l['val']:.3f} | {time.time() - t0:6.1f}s\")\n    if it == MAX_ITERS:\n        break\n    x, y = get_batch(\"train\")\n    _, loss = model(x, y)\n    optimizer.zero_grad(set_to_none=True)\n    loss.backward()\n    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)\n    optimizer.step()\n\nsteps, tr, va = zip(*history)\nplt.figure(figsize=(6, 3.5))\nplt.plot(steps, tr, label=\"train\")\nplt.plot(steps, va, label=\"val\")\nplt.xlabel(\"step\")\nplt.ylabel(\"loss\")\nplt.legend()\nplt.title(\"MiniGPT learning Shakespeare\")\nplt.show()",
+  "out": "step     0 | train 4.315 | val 4.317 |    6.3s\nstep   100 | train 2.377 | val 2.394 |   93.0s\nstep   200 | train 2.023 | val 2.087 |  189.4s\nstep   300 | train 1.825 | val 1.941 |  276.9s\nstep   400 | train 1.697 | val 1.840 |  374.5s\nstep   500 | train 1.612 | val 1.779 |  459.7s\nstep   600 | train 1.550 | val 1.714 |  546.7s\n",
+  "figs": [
+   "fig_6_3-D_0.png"
+  ],
+  "seconds": 547.0
+ },
+ "6.3-E": {
+  "code": "model.eval()\nstart = torch.tensor([encode(\"ROMEO:\")], device=device)\ntorch.manual_seed(7)\nsample = model.generate(start, max_new_tokens=300, temperature=0.8, top_k=20)\nprint(decode(sample[0].tolist()))",
+  "out": "ROMEO:\nGod, my look: lord, letter your eyes\nAnd him be my lay from out royard she have ship.\n\nFirst Senate:\nSpay we mader:\nWhy, I have father, as year that own with your\nsoon that yreaks of myself your and the day be day.\n\nKING RICHARD IIII:\nHe scietter from where with sorms not once,\nTo did they it lettr\n",
+  "figs": [],
+  "seconds": 1.8
+ },
+ "6.3-F": {
+  "code": "from transformers import AutoModelForCausalLM\n\nqwen_name = \"Qwen/Qwen3-0.6B\"\nq_tok = AutoTokenizer.from_pretrained(qwen_name)\nqwen = AutoModelForCausalLM.from_pretrained(qwen_name, dtype=\"auto\").to(device)\nc = qwen.config\nprint(f\"layers={c.num_hidden_layers}  d_model={c.hidden_size}  query heads={c.num_attention_heads}  \"\n      f\"key/value heads={c.num_key_value_heads}  context={c.max_position_embeddings}\")\nmessages = [{\"role\": \"user\", \"content\": \"In one sentence, what does a decoder-only transformer do?\"}]\nprompt = q_tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,\n                                   enable_thinking=False)\ninputs = q_tok(prompt, return_tensors=\"pt\").to(device)\nout = qwen.generate(**inputs, max_new_tokens=60, do_sample=False)\nprint(q_tok.decode(out[0][inputs[\"input_ids\"].shape[1]:], skip_special_tokens=True))",
+  "out": "layers=28  d_model=1024  query heads=16  key/value heads=8  context=40960\nA decoder-only transformer is a type of transformer architecture that processes input sequences and outputs a sequence of outputs, typically used in tasks like text-to-text generation or sequence-to-sequence tasks.\n",
+  "figs": [],
+  "seconds": 18.0
+ },
+ "6.4-A": {
+  "code": "SRC_LEN = 8\nBOS = 10\nS2S_VOCAB = 11\n\ndef make_batch(n):\n    src = torch.randint(0, 10, (n, SRC_LEN))\n    tgt = src.flip(1)\n    dec_in = torch.cat([torch.full((n, 1), BOS), tgt[:, :-1]], dim=1)\n    return src.to(device), dec_in.to(device), tgt.to(device)\n\ns, d_in, t = make_batch(1)\nprint(\"source (encoder input)  :\", s[0].tolist())\nprint(\"decoder input (BOS=10)  :\", d_in[0].tolist())\nprint(\"target (what to predict):\", t[0].tolist())",
+  "out": "source (encoder input)  : [4, 9, 1, 7, 3, 2, 0, 9]\ndecoder input (BOS=10)  : [10, 9, 0, 2, 3, 7, 1, 9]\ntarget (what to predict): [9, 0, 2, 3, 7, 1, 9, 4]\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "6.4-B": {
+  "code": "class DecoderBlock(nn.Module):\n    def __init__(self, d_model, n_heads, dropout=0.0):\n        super().__init__()\n        self.ln1 = nn.LayerNorm(d_model)\n        self.self_attn = MultiHeadAttention(d_model, n_heads, dropout)\n        self.ln2 = nn.LayerNorm(d_model)\n        self.cross_attn = MultiHeadAttention(d_model, n_heads, dropout)\n        self.ln3 = nn.LayerNorm(d_model)\n        self.ffn = FeedForward(d_model, dropout)\n\n    def forward(self, x, memory, tgt_mask, src_mask=None):\n        a, _ = self.self_attn(self.ln1(x), mask=tgt_mask)\n        x = x + a\n        c, cross_w = self.cross_attn(self.ln2(x), x_kv=memory, mask=src_mask)\n        x = x + c\n        x = x + self.ffn(self.ln3(x))\n        return x, cross_w\n\n\nclass Seq2SeqTransformer(nn.Module):\n    def __init__(self, vocab, max_len, d_model=64, n_heads=4, n_layers=2):\n        super().__init__()\n        self.src_emb = nn.Embedding(vocab, d_model)\n        self.tgt_emb = nn.Embedding(vocab, d_model)\n        self.pos_emb = nn.Embedding(max_len, d_model)\n        self.encoder = nn.ModuleList([Block(d_model, n_heads) for _ in range(n_layers)])\n        self.enc_ln = nn.LayerNorm(d_model)\n        self.decoder = nn.ModuleList([DecoderBlock(d_model, n_heads) for _ in range(n_layers)])\n        self.dec_ln = nn.LayerNorm(d_model)\n        self.head = nn.Linear(d_model, vocab)\n\n    def encode(self, src):\n        pos = torch.arange(src.size(1), device=src.device)\n        x = self.src_emb(src) + self.pos_emb(pos)\n        for block in self.encoder:\n            x = block(x)\n        return self.enc_ln(x)\n\n    def decode(self, dec_in, memory):\n        T = dec_in.size(1)\n        pos = torch.arange(T, device=dec_in.device)\n        x = self.tgt_emb(dec_in) + self.pos_emb(pos)\n        mask = causal_mask(T).to(dec_in.device)\n        for block in self.decoder:\n            x, cross_w = block(x, memory, mask)\n        return self.head(self.dec_ln(x)), cross_w\n\n    def forward(self, src, dec_in):\n        return self.decode(dec_in, self.encode(src))\n\ntorch.manual_seed(0)\ns2s = Seq2SeqTransformer(S2S_VOCAB, SRC_LEN).to(device)\nprint(\"Seq2Seq parameters:\", f\"{sum(p.numel() for p in s2s.parameters()):,}\")",
+  "out": "Seq2Seq parameters: 236,363\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "6.4-C": {
+  "code": "opt = torch.optim.AdamW(s2s.parameters(), lr=3e-3)\nfor step in range(1501):\n    src, dec_in, tgt = make_batch(128)\n    logits, _ = s2s(src, dec_in)\n    loss = F.cross_entropy(logits.reshape(-1, S2S_VOCAB), tgt.reshape(-1))\n    opt.zero_grad(set_to_none=True)\n    loss.backward()\n    opt.step()\n    if step % 300 == 0:\n        print(f\"step {step:4d} | loss {loss.item():.4f}\")",
+  "out": "step    0 | loss 2.5570\nstep  300 | loss 0.0005\nstep  600 | loss 0.0002\nstep  900 | loss 0.0001\nstep 1200 | loss 0.0001\nstep 1500 | loss 0.0000\n",
+  "figs": [],
+  "seconds": 40.8
+ },
+ "6.4-D": {
+  "code": "@torch.no_grad()\ndef greedy_decode(model, src):\n    model.eval()\n    memory = model.encode(src)\n    dec = torch.full((src.size(0), 1), BOS, device=src.device)\n    for _ in range(SRC_LEN):\n        logits, w = model.decode(dec, memory)\n        next_id = logits[:, -1].argmax(-1, keepdim=True)\n        dec = torch.cat([dec, next_id], dim=1)\n    return dec[:, 1:], w\n\nsrc, _, tgt = make_batch(1000)\npred, _ = greedy_decode(s2s, src)\nacc = (pred == tgt).all(dim=1).float().mean().item()\nprint(\"whole-sequence accuracy on 1000 new examples:\", f\"{acc:.1%}\")\nprint(\"example source :\", src[0].tolist())\nprint(\"model output   :\", pred[0].tolist())",
+  "out": "whole-sequence accuracy on 1000 new examples: 100.0%\nexample source : [7, 7, 5, 0, 6, 8, 2, 2]\nmodel output   : [2, 2, 8, 6, 0, 5, 7, 7]\n",
+  "figs": [],
+  "seconds": 0.1
+ },
+ "6.4-E": {
+  "code": "example = torch.tensor([[3, 1, 4, 1, 5, 9, 2, 6]], device=device)\npred, cross_w = greedy_decode(s2s, example)\nA = cross_w[0].mean(0).cpu()\nplt.figure(figsize=(5, 4.5))\nplt.imshow(A, cmap=\"viridis\")\nplt.xticks(range(SRC_LEN), example[0].tolist())\nplt.yticks(range(SRC_LEN), pred[0].tolist())\nplt.xlabel(\"encoder position (source digit)\")\nplt.ylabel(\"decoder step (digit being written)\")\nplt.title(\"Cross-attention: decoder looks at the source\")\nplt.colorbar()\nplt.show()\nprint(\"output:\", pred[0].tolist())",
+  "out": "output: [6, 2, 9, 5, 1, 4, 1, 3]\n",
+  "figs": [
+   "fig_6_4-E_0.png"
+  ],
+  "seconds": 0.2
+ }
+}

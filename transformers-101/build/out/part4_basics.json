@@ -1,0 +1,78 @@
+{
+ "4.0-A": {
+  "code": "import torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nimport matplotlib.pyplot as plt\n\ntorch.manual_seed(42)\ndevice = \"cuda\" if torch.cuda.is_available() else \"cpu\"\nprint(\"torch\", torch.__version__, \"| device:\", device)",
+  "out": "torch 2.14.1+cpu | device: cpu\n",
+  "figs": [],
+  "seconds": 1.1
+ },
+ "4.1-A": {
+  "code": "sentence = \"the cat sat on the mat\"\nwords = sentence.split()\nvocab = sorted(set(words))\nstoi = {w: i for i, w in enumerate(vocab)}\nitos = {i: w for w, i in stoi.items()}\nids = [stoi[w] for w in words]\nprint(\"words:\", words)\nprint(\"vocab:\", vocab)\nprint(\"ids  :\", ids)",
+  "out": "words: ['the', 'cat', 'sat', 'on', 'the', 'mat']\nvocab: ['cat', 'mat', 'on', 'sat', 'the']\nids  : [4, 0, 3, 2, 4, 1]\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.1-B": {
+  "code": "one_hot = F.one_hot(torch.tensor(ids), num_classes=len(vocab)).float()\nprint(one_hot)\ncat_vec, mat_vec = one_hot[1], one_hot[5]\nprint(\"cat . mat =\", (cat_vec @ mat_vec).item())\nprint(\"cat . cat =\", (cat_vec @ cat_vec).item())",
+  "out": "tensor([[0., 0., 0., 0., 1.],\n        [1., 0., 0., 0., 0.],\n        [0., 0., 0., 1., 0.],\n        [0., 0., 1., 0., 0.],\n        [0., 0., 0., 0., 1.],\n        [0., 1., 0., 0., 0.]])\ncat . mat = 0.0\ncat . cat = 1.0\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.1-C": {
+  "code": "d_model = 4\nemb = nn.Embedding(num_embeddings=len(vocab), embedding_dim=d_model)\nX = emb(torch.tensor(ids))\nprint(\"X shape:\", tuple(X.shape))\nprint(X)\nsame = one_hot @ emb.weight\nprint(\"lookup == one_hot @ W ?\", torch.allclose(X, same))",
+  "out": "X shape: (6, 4)\ntensor([[-0.3097, -0.3957,  0.8034, -0.6216],\n        [ 1.9269,  1.4873,  0.9007, -2.1055],\n        [-0.2316,  0.0418, -0.2516,  0.8599],\n        [ 0.3559, -0.6866, -0.4934,  0.2415],\n        [-0.3097, -0.3957,  0.8034, -0.6216],\n        [-0.7581,  1.0783,  0.8008,  1.6806]], grad_fn=<EmbeddingBackward0>)\nlookup == one_hot @ W ? True\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.1-D": {
+  "code": "from transformers import AutoTokenizer, AutoModel\n\ntok = AutoTokenizer.from_pretrained(\"openai-community/gpt2\")\ngpt2 = AutoModel.from_pretrained(\"openai-community/gpt2\", attn_implementation=\"eager\")\nE = gpt2.get_input_embeddings().weight.detach()\nprint(\"GPT-2 embedding table:\", tuple(E.shape))\n\ndef vec(word):\n    token_ids = tok.encode(\" \" + word)\n    assert len(token_ids) == 1, f\"'{word}' splits into {len(token_ids)} tokens\"\n    return E[token_ids[0]]\n\ndef cos(a, b):\n    return F.cosine_similarity(vec(a), vec(b), dim=0).item()\n\npairs = [(\"king\", \"queen\"), (\"king\", \"man\"), (\"king\", \"banana\"),\n         (\"Paris\", \"London\"), (\"Paris\", \"pizza\"), (\"happy\", \"glad\"), (\"happy\", \"truck\")]\nfor a, b in pairs:\n    print(f\"{a:>6} vs {b:<7} cosine = {cos(a, b):.3f}\")",
+  "out": "GPT-2 embedding table: (50257, 768)\n  king vs queen   cosine = 0.657\n  king vs man     cosine = 0.367\n  king vs banana  cosine = 0.256\n Paris vs London  cosine = 0.579\n Paris vs pizza   cosine = 0.249\n happy vs glad    cosine = 0.624\n happy vs truck   cosine = 0.233\n",
+  "figs": [],
+  "seconds": 3.8
+ },
+ "4.1-E": {
+  "code": "plot_words = [\"king\", \"queen\", \"man\", \"woman\", \"prince\", \"apple\", \"banana\", \"orange\",\n              \"car\", \"bus\", \"train\", \"truck\", \"Monday\", \"Friday\", \"Sunday\"]\nV = torch.stack([vec(w) for w in plot_words])\nV = V - V.mean(dim=0)\nU, S, Vt = torch.linalg.svd(V, full_matrices=False)\nP = V @ Vt[:2].T\nplt.figure(figsize=(6.5, 5))\nplt.scatter(P[:, 0], P[:, 1])\nfor w, (x, y) in zip(plot_words, P.tolist()):\n    plt.annotate(w, (x, y), fontsize=11)\nplt.title(\"GPT-2 token embeddings squashed to 2-D (PCA)\")\nplt.show()",
+  "out": "",
+  "figs": [
+   "fig_4_1-E_0.png"
+  ],
+  "seconds": 0.4
+ },
+ "4.2-A": {
+  "code": "keys = torch.tensor([[1.0, 0.0],    # \"cat\"\n                     [0.0, 1.0],    # \"sat\"\n                     [1.0, 1.0]])   # \"mat\"\nvalues = torch.tensor([[10.0, 0.0],\n                       [0.0, 10.0],\n                       [5.0, 5.0]])\nquery = torch.tensor([1.0, 0.0])\nscores = keys @ query\nweights = torch.softmax(scores, dim=0)\noutput = weights @ values\nprint(\"scores :\", scores)\nprint(\"weights:\", weights.round(decimals=4))\nprint(\"output :\", output.round(decimals=3))",
+  "out": "scores : tensor([1., 0., 1.])\nweights: tensor([0.4223, 0.1554, 0.4223])\noutput : tensor([6.3350, 3.6650])\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.2-B": {
+  "code": "torch.manual_seed(0)\nfor d in [2, 64, 512]:\n    q = torch.randn(d)\n    K = torch.randn(5, d)\n    raw = K @ q\n    w_raw = torch.softmax(raw, dim=0).max().item()\n    w_scaled = torch.softmax(raw / d ** 0.5, dim=0).max().item()\n    print(f\"d={d:4d}  score std={raw.std().item():6.2f}  \"\n          f\"biggest weight: unscaled={w_raw:.3f}  scaled={w_scaled:.3f}\")",
+  "out": "d=   2  score std=  1.41  biggest weight: unscaled=0.578  scaled=0.466\nd=  64  score std=  3.94  biggest weight: unscaled=0.493  scaled=0.273\nd= 512  score std= 20.15  biggest weight: unscaled=1.000  scaled=0.506\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.2-C": {
+  "code": "def attention(Q, K, V, mask=None):\n    d_k = Q.size(-1)\n    scores = Q @ K.transpose(-2, -1) / d_k ** 0.5\n    if mask is not None:\n        scores = scores.masked_fill(mask == 0, float(\"-inf\"))\n    weights = torch.softmax(scores, dim=-1)\n    return weights @ V, weights\n\ntorch.manual_seed(1)\nQ = torch.randn(1, 6, 8)\nK = torch.randn(1, 6, 8)\nV = torch.randn(1, 6, 8)\nmine, w = attention(Q, K, V)\nofficial = F.scaled_dot_product_attention(Q, K, V)\nprint(\"output shape :\", tuple(mine.shape))\nprint(\"weights shape:\", tuple(w.shape))\nprint(\"each row of weights sums to 1:\", torch.allclose(w.sum(-1), torch.ones(1, 6)))\nprint(\"matches PyTorch SDPA:\", torch.allclose(mine, official, atol=1e-6))",
+  "out": "output shape : (1, 6, 8)\nweights shape: (1, 6, 6)\neach row of weights sums to 1: True\nmatches PyTorch SDPA: True\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.3-A": {
+  "code": "class SelfAttention(nn.Module):\n    def __init__(self, d_model, d_k):\n        super().__init__()\n        self.W_q = nn.Linear(d_model, d_k, bias=False)\n        self.W_k = nn.Linear(d_model, d_k, bias=False)\n        self.W_v = nn.Linear(d_model, d_k, bias=False)\n\n    def forward(self, x, mask=None):\n        Q = self.W_q(x)\n        K = self.W_k(x)\n        V = self.W_v(x)\n        return attention(Q, K, V, mask)\n\ntorch.manual_seed(42)\nsa = SelfAttention(d_model=4, d_k=4)\nx = X.detach().unsqueeze(0)\nout, w = sa(x)\nprint(\"input  :\", tuple(x.shape))\nprint(\"output :\", tuple(out.shape))\nprint(\"weights:\", tuple(w.shape))\nprint(w[0].detach().round(decimals=2))",
+  "out": "input  : (1, 6, 4)\noutput : (1, 6, 4)\nweights: (1, 6, 6)\ntensor([[0.2100, 0.1700, 0.1400, 0.1400, 0.2100, 0.1300],\n        [0.2200, 0.3100, 0.0700, 0.1200, 0.2200, 0.0500],\n        [0.1400, 0.1400, 0.2000, 0.1800, 0.1400, 0.2100],\n        [0.1700, 0.1500, 0.1700, 0.1700, 0.1700, 0.1700],\n        [0.2100, 0.1700, 0.1400, 0.1400, 0.2100, 0.1300],\n        [0.1200, 0.1500, 0.2100, 0.2000, 0.1200, 0.2000]])\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "4.3-B": {
+  "code": "text = \"The animal didn't cross the street because it was too tired\"\nenc = tok(text, return_tensors=\"pt\")\ntokens = tok.convert_ids_to_tokens(enc[\"input_ids\"][0])\nwith torch.no_grad():\n    res = gpt2(**enc, output_attentions=True)\natt = torch.stack(res.attentions)[:, 0]\nit_pos = tokens.index(\"\u0120it\")\nanimal_pos = tokens.index(\"\u0120animal\")\nstreet_pos = tokens.index(\"\u0120street\")\nscore = att[:, :, it_pos, animal_pos]\nlayer, head = divmod(score.argmax().item(), score.shape[1])\nprint(\"number of layers x heads:\", tuple(score.shape))\nprint(f\"best 'it'->'animal' head: layer {layer}, head {head}\")\nprint(f\"  weight on 'animal' = {att[layer, head, it_pos, animal_pos].item():.2f}\")\nprint(f\"  weight on 'street' = {att[layer, head, it_pos, street_pos].item():.2f}\")",
+  "out": "number of layers x heads: (12, 12)\nbest 'it'->'animal' head: layer 4, head 3\n  weight on 'animal' = 0.85\n  weight on 'street' = 0.00\n",
+  "figs": [],
+  "seconds": 1.7
+ },
+ "4.3-C": {
+  "code": "clean = [t.replace(\"\u0120\", \"\") for t in tokens]\nA = att[layer, head].numpy()\nplt.figure(figsize=(7, 6))\nplt.imshow(A, cmap=\"viridis\")\nplt.xticks(range(len(clean)), clean, rotation=90)\nplt.yticks(range(len(clean)), clean)\nplt.xlabel(\"looked at (key)\")\nplt.ylabel(\"looking (query)\")\nplt.title(f\"GPT-2 self-attention, layer {layer} head {head}\")\nplt.colorbar()\nplt.tight_layout()\nplt.show()",
+  "out": "",
+  "figs": [
+   "fig_4_3-C_0.png"
+  ],
+  "seconds": 0.3
+ }
+}

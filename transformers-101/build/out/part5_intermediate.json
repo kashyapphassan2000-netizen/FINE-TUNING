@@ -1,0 +1,78 @@
+{
+ "5.0-A": {
+  "code": "import math\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nimport matplotlib.pyplot as plt\n\ntorch.manual_seed(42)\ndevice = \"cuda\" if torch.cuda.is_available() else \"cpu\"\nprint(\"torch\", torch.__version__, \"| device:\", device)",
+  "out": "torch 2.14.1+cpu | device: cpu\n",
+  "figs": [],
+  "seconds": 1.1
+ },
+ "5.1-A": {
+  "code": "class MultiHeadAttention(nn.Module):\n    def __init__(self, d_model, n_heads, dropout=0.0):\n        super().__init__()\n        assert d_model % n_heads == 0, \"d_model must be divisible by n_heads\"\n        self.n_heads = n_heads\n        self.d_head = d_model // n_heads\n        self.W_q = nn.Linear(d_model, d_model)\n        self.W_k = nn.Linear(d_model, d_model)\n        self.W_v = nn.Linear(d_model, d_model)\n        self.W_o = nn.Linear(d_model, d_model)\n        self.dropout = nn.Dropout(dropout)\n\n    def split_heads(self, x):\n        B, T, _ = x.shape\n        return x.view(B, T, self.n_heads, self.d_head).transpose(1, 2)\n\n    def forward(self, x_q, x_kv=None, mask=None):\n        if x_kv is None:\n            x_kv = x_q\n        Q = self.split_heads(self.W_q(x_q))\n        K = self.split_heads(self.W_k(x_kv))\n        V = self.split_heads(self.W_v(x_kv))\n        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.d_head)\n        if mask is not None:\n            scores = scores.masked_fill(mask == 0, float(\"-inf\"))\n        weights = self.dropout(torch.softmax(scores, dim=-1))\n        out = weights @ V\n        B, H, T, Dh = out.shape\n        out = out.transpose(1, 2).contiguous().view(B, T, H * Dh)\n        return self.W_o(out), weights\n\nmha = MultiHeadAttention(d_model=32, n_heads=4)\nx = torch.randn(2, 6, 32)\ny, w = mha(x)\nprint(\"input  x      :\", tuple(x.shape))\nprint(\"output y      :\", tuple(y.shape))\nprint(\"weights       :\", tuple(w.shape), \"<- (batch, heads, query, key)\")\nprint(\"parameters    :\", sum(p.numel() for p in mha.parameters()))",
+  "out": "input  x      : (2, 6, 32)\noutput y      : (2, 6, 32)\nweights       : (2, 4, 6, 6) <- (batch, heads, query, key)\nparameters    : 4224\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.1-B": {
+  "code": "B, T, D, H = 2, 6, 32, 4\nq = mha.W_q(x)\nprint(\"1. after W_q              :\", tuple(q.shape))\nq = q.view(B, T, H, D // H)\nprint(\"2. view into heads        :\", tuple(q.shape))\nq = q.transpose(1, 2)\nprint(\"3. heads to the front     :\", tuple(q.shape))\nk = mha.W_k(x).view(B, T, H, D // H).transpose(1, 2)\ns = q @ k.transpose(-2, -1)\nprint(\"4. scores per head        :\", tuple(s.shape))\no = torch.softmax(s / math.sqrt(D // H), -1) @ mha.W_v(x).view(B, T, H, D // H).transpose(1, 2)\nprint(\"5. weighted values        :\", tuple(o.shape))\no = o.transpose(1, 2).reshape(B, T, D)\nprint(\"6. heads glued back       :\", tuple(o.shape))",
+  "out": "1. after W_q              : (2, 6, 32)\n2. view into heads        : (2, 6, 4, 8)\n3. heads to the front     : (2, 4, 6, 8)\n4. scores per head        : (2, 4, 6, 6)\n5. weighted values        : (2, 4, 6, 8)\n6. heads glued back       : (2, 6, 32)\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.1-C": {
+  "code": "ref = nn.MultiheadAttention(embed_dim=32, num_heads=4, batch_first=True)\nwith torch.no_grad():\n    ref.in_proj_weight.copy_(torch.cat([mha.W_q.weight, mha.W_k.weight, mha.W_v.weight]))\n    ref.in_proj_bias.copy_(torch.cat([mha.W_q.bias, mha.W_k.bias, mha.W_v.bias]))\n    ref.out_proj.weight.copy_(mha.W_o.weight)\n    ref.out_proj.bias.copy_(mha.W_o.bias)\ny_ref, _ = ref(x, x, x)\nprint(\"my MHA == torch.nn.MultiheadAttention:\", torch.allclose(y, y_ref, atol=1e-6))",
+  "out": "my MHA == torch.nn.MultiheadAttention: True\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.2-A": {
+  "code": "def causal_mask(T):\n    return torch.tril(torch.ones(T, T)).view(1, 1, T, T)\n\nprint(causal_mask(5)[0, 0])",
+  "out": "tensor([[1., 0., 0., 0., 0.],\n        [1., 1., 0., 0., 0.],\n        [1., 1., 1., 0., 0.],\n        [1., 1., 1., 1., 0.],\n        [1., 1., 1., 1., 1.]])\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.2-B": {
+  "code": "torch.manual_seed(0)\nx1 = torch.randn(1, 6, 32)\nx2 = x1.clone()\nx2[0, -1] = torch.randn(32)\nmask = causal_mask(6)\ny1, w1 = mha(x1, mask=mask)\ny2, _ = mha(x2, mask=mask)\nprint(\"WITH mask   : first 5 outputs unchanged? \", torch.allclose(y1[0, :5], y2[0, :5], atol=1e-6))\nprint(\"WITH mask   : last output changed?       \", not torch.allclose(y1[0, 5], y2[0, 5]))\nu1, _ = mha(x1)\nu2, _ = mha(x2)\nprint(\"WITHOUT mask: first 5 outputs unchanged? \", torch.allclose(u1[0, :5], u2[0, :5], atol=1e-6))\nprint(\"head 0 weights with mask:\")\nprint(w1[0, 0].detach().round(decimals=2))",
+  "out": "WITH mask   : first 5 outputs unchanged?  True\nWITH mask   : last output changed?        True\nWITHOUT mask: first 5 outputs unchanged?  False\nhead 0 weights with mask:\ntensor([[1.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],\n        [0.4800, 0.5200, 0.0000, 0.0000, 0.0000, 0.0000],\n        [0.3300, 0.3600, 0.3100, 0.0000, 0.0000, 0.0000],\n        [0.2900, 0.1600, 0.2600, 0.2900, 0.0000, 0.0000],\n        [0.1600, 0.3400, 0.1800, 0.1200, 0.2000, 0.0000],\n        [0.1600, 0.1400, 0.1900, 0.1800, 0.1700, 0.1600]])\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.2-C": {
+  "code": "tokens = torch.tensor([[5, 7, 9, 0, 0],\n                       [3, 4, 0, 0, 0]])\nPAD = 0\npad_mask = (tokens != PAD).view(2, 1, 1, 5).int()\nprint(\"padding mask, sentence 1:\", pad_mask[0, 0, 0].tolist())\nprint(\"padding mask, sentence 2:\", pad_mask[1, 0, 0].tolist())\ncombined = pad_mask * causal_mask(5).int()\nprint(\"causal + padding, sentence 2:\")\nprint(combined[1, 0])",
+  "out": "padding mask, sentence 1: [1, 1, 1, 0, 0]\npadding mask, sentence 2: [1, 1, 0, 0, 0]\ncausal + padding, sentence 2:\ntensor([[1, 0, 0, 0, 0],\n        [1, 1, 0, 0, 0],\n        [1, 1, 0, 0, 0],\n        [1, 1, 0, 0, 0],\n        [1, 1, 0, 0, 0]], dtype=torch.int32)\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.3-A": {
+  "code": "torch.manual_seed(0)\nx = torch.randn(1, 5, 32)\nperm = torch.tensor([4, 2, 0, 3, 1])\ny, _ = mha(x)\ny_shuffled_input, _ = mha(x[:, perm])\nprint(\"Shuffle the words, outputs are just shuffled too:\",\n      torch.allclose(y[:, perm], y_shuffled_input, atol=1e-6))\nprint(\"=> without position info, 'dog bites man' == 'man bites dog' to attention\")",
+  "out": "Shuffle the words, outputs are just shuffled too: True\n=> without position info, 'dog bites man' == 'man bites dog' to attention\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.3-B": {
+  "code": "def sinusoidal_pe(max_len, d_model):\n    pos = torch.arange(max_len).unsqueeze(1)\n    i = torch.arange(0, d_model, 2)\n    freq = torch.exp(-math.log(10000.0) * i / d_model)\n    pe = torch.zeros(max_len, d_model)\n    pe[:, 0::2] = torch.sin(pos * freq)\n    pe[:, 1::2] = torch.cos(pos * freq)\n    return pe\n\npe = sinusoidal_pe(100, 64)\nprint(\"PE table:\", tuple(pe.shape))\nprint(\"position 0, first 6 numbers:\", [round(v, 3) for v in pe[0, :6].tolist()])\nprint(\"position 1, first 6 numbers:\", [round(v, 3) for v in pe[1, :6].tolist()])\nplt.figure(figsize=(8, 4))\nplt.imshow(pe.T, aspect=\"auto\", cmap=\"RdBu\")\nplt.xlabel(\"position in sentence\")\nplt.ylabel(\"embedding dimension\")\nplt.title(\"Sinusoidal positional encoding (each column = one position's 'barcode')\")\nplt.colorbar()\nplt.show()",
+  "out": "PE table: (100, 64)\nposition 0, first 6 numbers: [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]\nposition 1, first 6 numbers: [0.841, 0.54, 0.682, 0.732, 0.533, 0.846]\n",
+  "figs": [
+   "fig_5_3-B_0.png"
+  ],
+  "seconds": 0.3
+ },
+ "5.3-C": {
+  "code": "sims = pe @ pe[20]\nplt.figure(figsize=(7, 3))\nplt.plot(sims)\nplt.axvline(20, color=\"red\", linestyle=\"--\")\nplt.xlabel(\"position\")\nplt.ylabel(\"dot product with position 20\")\nplt.title(\"Nearby positions look similar, far ones look different\")\nplt.show()\nprint(\"similarity 20 vs 20:\", round(sims[20].item(), 2))\nprint(\"similarity 20 vs 21:\", round(sims[21].item(), 2))\nprint(\"similarity 20 vs 60:\", round(sims[60].item(), 2))",
+  "out": "similarity 20 vs 20: 32.0\nsimilarity 20 vs 21: 30.92\nsimilarity 20 vs 60: 15.4\n",
+  "figs": [
+   "fig_5_3-C_0.png"
+  ],
+  "seconds": 0.2
+ },
+ "5.3-D": {
+  "code": "def rope(x, base=10000.0):\n    T, D = x.shape[-2], x.shape[-1]\n    pos = torch.arange(T, dtype=torch.float32).unsqueeze(1)\n    freq = base ** (-torch.arange(0, D, 2, dtype=torch.float32) / D)\n    angle = pos * freq\n    cos, sin = angle.cos(), angle.sin()\n    x1, x2 = x[..., 0::2], x[..., 1::2]\n    out = torch.empty_like(x)\n    out[..., 0::2] = x1 * cos - x2 * sin\n    out[..., 1::2] = x1 * sin + x2 * cos\n    return out\n\ntorch.manual_seed(0)\nq_vec, k_vec = torch.randn(64), torch.randn(64)\nQs = rope(q_vec.repeat(50, 1))\nKs = rope(k_vec.repeat(50, 1))\nprint(\"query at 3, key at 1  (distance 2):\", round((Qs[3] @ Ks[1]).item(), 4))\nprint(\"query at 30, key at 28 (distance 2):\", round((Qs[30] @ Ks[28]).item(), 4))\nprint(\"query at 30, key at 10 (distance 20):\", round((Qs[30] @ Ks[10]).item(), 4))\nprint(\"RoPE keeps vector length:\", torch.allclose(Qs.norm(dim=-1), q_vec.norm().repeat(50)))",
+  "out": "query at 3, key at 1  (distance 2): -10.1427\nquery at 30, key at 28 (distance 2): -10.1427\nquery at 30, key at 10 (distance 20): -14.1193\nRoPE keeps vector length: True\n",
+  "figs": [],
+  "seconds": 0.0
+ },
+ "5.4-A": {
+  "code": "class FeedForward(nn.Module):\n    def __init__(self, d_model, dropout=0.0):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Linear(d_model, 4 * d_model),\n            nn.GELU(),\n            nn.Linear(4 * d_model, d_model),\n            nn.Dropout(dropout),\n        )\n\n    def forward(self, x):\n        return self.net(x)\n\n\nclass Block(nn.Module):\n    def __init__(self, d_model, n_heads, dropout=0.0):\n        super().__init__()\n        self.ln1 = nn.LayerNorm(d_model)\n        self.attn = MultiHeadAttention(d_model, n_heads, dropout)\n        self.ln2 = nn.LayerNorm(d_model)\n        self.ffn = FeedForward(d_model, dropout)\n\n    def forward(self, x, mask=None):\n        a, _ = self.attn(self.ln1(x), mask=mask)\n        x = x + a\n        x = x + self.ffn(self.ln2(x))\n        return x\n\nblock = Block(d_model=64, n_heads=4)\nx = torch.randn(2, 10, 64)\ny = block(x, mask=causal_mask(10))\nprint(\"block in :\", tuple(x.shape))\nprint(\"block out:\", tuple(y.shape))\nprint(\"block parameters:\", sum(p.numel() for p in block.parameters()))",
+  "out": "block in : (2, 10, 64)\nblock out: (2, 10, 64)\nblock parameters: 49984\n",
+  "figs": [],
+  "seconds": 0.0
+ }
+}
