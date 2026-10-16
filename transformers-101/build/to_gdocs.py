@@ -395,36 +395,33 @@ def write_ops(ops, api, doc_id, tab_id, start_op=0, max_seconds=150, log=print, 
             rows = op[1]
             R, Cc = len(rows), len(rows[0])
             queue.append({"insertTable": {"rows": R, "columns": Cc, "location": {"index": idx, "tabId": tab_id}}})
-            send(force=True)
-            content = body_of(api, doc_id, tab_id)
-            tbl = [e for e in content if "table" in e and e["startIndex"] >= idx][0]
-            S = tbl["startIndex"]
-            trows = tbl["table"]["tableRows"]
-            cell_reqs = []
+            # insertTable adds a newline at idx, so the table starts at idx + 1. An empty R x C table
+            # spans R*(2C+1)+2 index units and cell (i, j)'s paragraph starts at S + 3 + i*(2C+1) + 2j.
+            # Cells are filled last-to-first so earlier positions stay valid (verified on a test doc).
+            S = idx + 1
+            total = 0
             for i in reversed(range(R)):
                 for j in reversed(range(Cc)):
-                    p = trows[i]["tableCells"][j]["content"][0]["startIndex"]
+                    p = S + 3 + i * (2 * Cc + 1) + 2 * j
                     txt, styles = rows[i][j]
                     if not txt:
                         continue
                     n = u16(txt)
-                    cell_reqs.append({"insertText": {"location": {"index": p, "tabId": tab_id}, "text": txt}})
-                    cell_reqs.append({"updateTextStyle": {"range": {"startIndex": p, "endIndex": p + n, "tabId": tab_id},
-                                                          "textStyle": {"fontSize": {"magnitude": 9, "unit": "PT"},
-                                                                        "bold": i == 0,
-                                                                        "foregroundColor": rgb("#ffffff" if i == 0 else "#0f172a")},
-                                                          "fields": "fontSize,bold,foregroundColor,weightedFontFamily,backgroundColor,italic,link,underline"}})
+                    total += n
+                    queue.append({"insertText": {"location": {"index": p, "tabId": tab_id}, "text": txt}})
+                    queue.append({"updateTextStyle": {"range": {"startIndex": p, "endIndex": p + n, "tabId": tab_id},
+                                                      "textStyle": {"fontSize": {"magnitude": 9, "unit": "PT"},
+                                                                    "bold": i == 0,
+                                                                    "foregroundColor": rgb("#ffffff" if i == 0 else "#0f172a")},
+                                                      "fields": "fontSize,bold,foregroundColor,weightedFontFamily,backgroundColor,italic,link,underline"}})
                     for s_, e_, st in styles:
-                        cell_reqs.append(text_style_req(p + s_, p + e_, st, tab_id))
-            cell_reqs.append({"updateTableCellStyle": {
+                        queue.append(text_style_req(p + s_, p + e_, st, tab_id))
+            queue.append({"updateTableCellStyle": {
                 "tableRange": {"tableCellLocation": {"tableStartLocation": {"index": S, "tabId": tab_id}, "rowIndex": 0, "columnIndex": 0},
                                "rowSpan": 1, "columnSpan": Cc},
                 "tableCellStyle": {"backgroundColor": rgb(COLORS["th_bg"])}, "fields": "backgroundColor"}})
-            queue += cell_reqs
-            send(force=True)
-            content = body_of(api, doc_id, tab_id)
-            tbl = [e for e in content if "table" in e and e["startIndex"] == S][0]
-            idx = tbl["endIndex"]
+            idx = S + R * (2 * Cc + 1) + 2 + total
+            send()
         n_op += 1
         if n_op % 20 == 0:
             log(f"op {n_op}/{len(ops)} idx={idx}")
